@@ -14,10 +14,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js (Exemplo)
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-size: 20
+          node-version: 20 # CORRIGIDO: Era 'node-size', o correto é 'node-version'
 
       - name: Install Dependencies
         run: npm install
@@ -28,7 +28,7 @@ jobs:
         run: npm run lint # Se os seus testes quebrarem aqui, o Job falha e o próximo assume
 
       - name: Enviar Erro para o Agente de IA
-        if: failure() && steps:run_tests.outcome == 'failure'
+        if: failure() && steps.run_tests.outcome == 'failure' # CORRIGIDO: Trocado 'steps:' por 'steps.'
         env:
           # Chave de API salva nos Secrets do seu GitHub
           AI_API_KEY: ${{ secrets.OPENAI_API_KEY }} 
@@ -38,12 +38,12 @@ jobs:
           ERROR_LOG=$(git log -1 --pretty=format:"Commit: %s" && echo "" && echo "Logs recentes:" && timeout 10s npm run test-error 2>&1 | tail -n 50)
           
           echo "=== 2. FORMATANDO O PROMPT ==="
-          # Protege o texto para não quebrar o JSON da requisição
-          CLEAN_LOG=$(echo "$ERROR_LOG" | jq -aR .)
+          # Protege o texto para não quebrar o JSON da requisição (lida com múltiplas linhas)
+          CLEAN_LOG=$(echo "$ERROR_LOG" | jq -Rs .) # CORRIGIDO: Usando -Rs para escapar strings multilinhas perfeitamente
 
           echo "=== 3. ENVIANDO PARA A API DA IA ==="
           # Envia os dados via comando cURL usando sua chave de API
-          RESPONSE=$(curl -s https://openai.com \
+          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $AI_API_KEY" \
             -d "{
