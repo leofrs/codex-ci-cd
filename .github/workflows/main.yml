@@ -48,7 +48,7 @@ jobs:
 
       # Executa o OpenCode para criar a branch de correção e o PR
       - name: Run OpenCode Agent for Auto-Fix
-        uses: anomalyco/opencode@main
+        uses: anomalyco/opencode@dev
         with:
           model: 'openai/codex-oauth'
           use_github_token: 'true'
