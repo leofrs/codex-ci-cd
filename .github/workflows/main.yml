@@ -1,33 +1,61 @@
-name: Quality
+name: CI Pipeline
 
 on:
   push:
+    branches: [ "main", "develop" ] # Executa a cada push nessas branches
+  pull_request:
+    branches: [ "main" ]
 
 jobs:
-  quality:
+  # JOB 1: Executa a validação padrão do seu projeto (Testes / Linter)
+  test-and-validate:
     runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (Exemplo)
+        uses: actions/setup-node@v4
+        with:
+          node-size: 20
+
+      - name: Install Dependencies
+        run: npm install
+
+      # ETAPA QUE VAI FALHAR: Rodar os testes ou o padrão de código
+      - name: Run Code Standard & Tests
+        run: npm run lint # Se os seus testes quebrarem aqui, o Job falha e o próximo assume
+
+  # JOB 2: O OpenCode entra em ação de forma padrão APENAS em caso de falha no Job 1
+  opencode-autofix:
+    needs: test-and-validate      # Define dependência do Job acima
+    if: failure()                 # Condição Padrão: Só roda se o 'test-and-validate' falhar
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      # Injeta a autenticação local que você copiou da sua máquina
+      - name: Setup Local OpenCode Auth
+        shell: bash
+        run: |
+          mkdir -p ~/.local/share/opencode/
+          echo '${{ secrets.OPENCODE_AUTH_JSON }}' > ~/.local/share/opencode/auth.json
+
+      # Executa o OpenCode para criar a branch de correção e o PR
+      - name: Run OpenCode Agent for Auto-Fix
+        uses: anomalyco/opencode@main
         with:
-          node-version: 22
-
-      - run: npm install
-
-      # PASSO 1
-      - name: Verificar complexidade
-        run: npx eslint src
-
-      # PASSO 2
-      - name: Executar Codex
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          model: 'openai/codex-oauth'
+          use_github_token: 'true'
           prompt: |
-            Analise este Pull Request.
-
-            Caso exista alguma função com complexidade
-            maior que 3, explique o problema e proponha
-            uma refatoração.
+            A etapa anterior de testes da pipeline falhou.
+            Analise os arquivos modificados recentemente neste commit.
+            Corrija o bug ou ajuste o código para passar no padrão esperado de testes.
+            Faça as alterações nos arquivos e abra um Pull Request detalhado com a correção.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
