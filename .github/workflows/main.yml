@@ -2,12 +2,15 @@ name: CI Pipeline
 
 on:
   push:
-    branches: [ "main", "develop" ] # Executa a cada push nessas branches
+    branches: [ "main", "develop" ]
   pull_request:
     branches: [ "main" ]
 
+permissions:
+  pull-requests: write
+  contents: read
+
 jobs:
-  # JOB 1: Executa a validação padrão do seu projeto (Testes / Linter)
   test-and-validate:
     runs-on: ubuntu-latest
     steps:
@@ -17,44 +20,53 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # CORRIGIDO: Era 'node-size', o correto é 'node-version'
+          node-version: 20
 
       - name: Install Dependencies
         run: npm install
 
-      # ETAPA QUE VAI FALHAR: Rodar os testes ou o padrão de código
       - name: Run Code Standard & Tests
         id: run_tests
-        run: npm run lint # Se os seus testes quebrarem aqui, o Job falha e o próximo assume
+        run: npm run lint
 
       - name: Enviar Erro para o Agente de IA
-        if: failure() && steps.run_tests.outcome == 'failure' # CORRIGIDO: Trocado 'steps:' por 'steps.'
+        if: failure() && steps.run_tests.outcome == 'failure'
         env:
-          # Chave de API salva nos Secrets do seu GitHub
-          AI_API_KEY: ${{ secrets.OPENAI_API_KEY }} 
+          AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "=== 1. CAPTURANDO LOGS DE ERRO ==="
-          # Captura as últimas 50 linhas do terminal para enviar à IA
-          ERROR_LOG=$(git log -1 --pretty=format:"Commit: %s" && echo "" && echo "Logs recentes:" && timeout 10s npm run lint 2>&1 | tail -n 50)
-          
-          echo "=== 2. FORMATANDO O PROMPT ==="
-          # Protege o texto para não quebrar o JSON da requisição (lida com múltiplas linhas)
-          CLEAN_LOG=$(echo "$ERROR_LOG" | jq -Rs .) # CORRIGIDO: Usando -Rs para escapar strings multilinhas perfeitamente
+          ERROR_LOG=$(timeout 10s npm run lint 2>&1 | tail -n 50)
+          CLEAN_LOG=$(echo "$ERROR_LOG" | jq -Rs .)
 
-          echo "=== 3. ENVIANDO PARA A API DA IA ==="
-          # Envia os dados via comando cURL usando sua chave de API
-          RESPONSE=$(curl -s https://api.openai.com/v1/chat/completions \
+          echo "=== 2. REQUISITANDO ANÁLISE DA IA ==="
+          RESPONSE=$(curl -s --max-time 15 https://api.openai.com/v1/chat/completions \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $AI_API_KEY" \
             -d "{
               \"model\": \"gpt-4o-mini\",
               \"messages\": [
-                {\"role\": \"system\", \"content\": \"Você é um especialista em DevOps. Analise o erro fornecido, explique o motivo em português de forma curta e direta, e mostre o código ou comando exato para corrigir.\"},
+                {\"role\": \"system\", \"content\": \"Você é um engenheiro DevOps sénior. Resuma este erro de CI/CD em português de Portugal em até 3 frases e mostre o comando/código exato para corrigir.\"},
                 {\"role\": \"user\", \"content\": $CLEAN_LOG}
               ],
-              \"temperature\": 0.2
+              \"temperature\": 0.1,
+              \"max_tokens\": 300
             }")
 
-          echo "=== 4. RESPOSTA DO AGENTE DE IA ==="
-          # Extrai apenas o texto da resposta do JSON retornado pela API
-          echo "$RESPONSE" | jq '.choices[0].message.content' -r
+          AI_MESSAGE=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // "Não foi possível gerar uma análise para este erro no momento."')
+
+          echo "=== 3. PUBLICANDO NO STEP SUMMARY (Para Push Direto ou PR) ==="
+          echo "### 🤖 Análise de Erro por IA" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "$AI_MESSAGE" >> $GITHUB_STEP_SUMMARY
+
+          echo "=== 4. VERIFICANDO SE É PULL REQUEST PARA COMENTAR ==="
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Detetado evento de Pull Request. Publicando comentário..."
+            
+            # Formata a mensagem num bloco Markdown bonito para o comentário do PR
+            COMMENT_BODY=$(cat <<EOF A execução dos testes falhou. O assistente de IA analisou os logs e sugere a seguinte correção $AI_MESSAGE EOF )
+            gh pr comment ${{ github.event.number }} --body "$COMMENT_BODY"
+          else
+            echo "Push direto detetado (não é um PR). Ignorando envio de comentário."
+          fi
