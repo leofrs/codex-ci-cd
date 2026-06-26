@@ -34,7 +34,7 @@ jobs:
           npm run lint > lint.log 2>&1
           cat lint.log
 
-      - name: Enviar Erro para o Agente de IA
+            - name: Enviar Erro para o Agente de IA
         if: steps.run_tests.outcome == 'failure'
         env:
           AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -70,28 +70,57 @@ jobs:
 
           AI_MESSAGE=$(echo "$RESPONSE" | jq -r '.choices[0].message.content // "Não foi possível gerar uma análise para este erro no momento."')
 
-          echo "=== 3. PUBLICANDO NO STEP SUMMARY ==="
+          echo "=== 3. EXIBINDO RESPOSTA DA IA NO LOG ==="
+          echo "=============================="
+          echo "RESPOSTA DA IA"
+          echo "=============================="
+          echo "$AI_MESSAGE"
+          echo "=============================="
+
+          echo "=== 4. GERANDO RELATÓRIO MARKDOWN ==="
 
           {
-            echo "### 🤖 Análise de Erro por IA"
+            echo "# 🤖 AI CI Assistant"
+            echo ""
+            echo "## Status"
+            echo ""
+            echo "Falha detetada no workflow de CI/CD."
+            echo ""
+            echo "## Evento"
+            echo ""
+            echo "- Evento: $GH_EVENT_NAME"
+            echo "- Pull Request: ${GH_PR_NUMBER:-N/A}"
+            echo ""
+            echo "## Logs analisados"
+            echo ""
+            echo '```txt'
+            tail -n 80 lint.log
+            echo '```'
+            echo ""
+            echo "## Correção sugerida pela IA"
             echo ""
             echo "$AI_MESSAGE"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } > ai-analysis.md
 
-          echo "=== 4. VERIFICANDO SE É PULL REQUEST PARA COMENTAR ==="
+          echo "=== 5. PUBLICANDO NO STEP SUMMARY ==="
+
+          cat ai-analysis.md >> "$GITHUB_STEP_SUMMARY"
+
+          echo "=== 6. COMENTANDO NO PR, SE EXISTIR ==="
 
           if [ "$GH_EVENT_NAME" = "pull_request" ]; then
             echo "Detetado Pull Request. Publicando comentário..."
 
-           FULL_COMMENT=$(printf '%s\n\n%s\n\n%s' \
-              "### 🤖 Alerta de CI: Falha detetada" \
-              "A execução dos testes/lint falhou. O assistente de IA analisou os logs e sugere a seguinte correção:" \
-              "$AI_MESSAGE"
-          )
-
-            gh pr comment "$GH_PR_NUMBER" --body "$FULL_COMMENT"
+            gh pr comment "$GH_PR_NUMBER" --body-file ai-analysis.md
           else
             echo "Push direto detetado. Ignorando comentário no PR."
           fi
 
           exit 1
+
+      - name: Upload AI Analysis Artifact
+        if: steps.run_tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-analysis
+          path: ai-analysis.md
