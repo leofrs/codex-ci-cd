@@ -34,6 +34,7 @@ jobs:
         env:
           AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_PR_NUMBER: ${{ github.event.number }} # Passando o número do PR com segurança
         run: |
           echo "=== 1. CAPTURANDO LOGS DE ERRO ==="
           ERROR_LOG=$(timeout 10s npm run lint 2>&1 | tail -n 50)
@@ -64,9 +65,19 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo "Detetado evento de Pull Request. Publicando comentário..."
             
-            # Formata a mensagem num bloco Markdown bonito para o comentário do PR
-            COMMENT_BODY=$(cat <<EOF A execução dos testes falhou. O assistente de IA analisou os logs e sugere a seguinte correção $AI_MESSAGE EOF )
-            gh pr comment ${{ github.event.number }} --body "$COMMENT_BODY"
+            # CORRIGIDO: O bloco EOF agora está devidamente quebrado em linhas separadas e isoladas
+            COMMENT_BODY=$(cat << 'EOF'
+### 🤖 Alerta de CI: Falha detetada
+
+A execução dos testes falhou. O assistente de IA analisou os logs e sugere a seguinte correção:
+
+EOF
+)
+            # Une a mensagem base com a resposta da IA de forma segura
+            FULL_COMMENT="$COMMENT_BODY"$'\n'"$AI_MESSAGE"
+            
+            # Publica o comentário usando a variável de ambiente segura
+            gh pr comment "$GH_PR_NUMBER" --body "$FULL_COMMENT"
           else
             echo "Push direto detetado (não é um PR). Ignorando envio de comentário."
           fi
