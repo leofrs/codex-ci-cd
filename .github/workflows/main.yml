@@ -35,7 +35,7 @@ jobs:
         run: |
           echo "=== 1. CAPTURANDO LOGS DE ERRO ==="
           # Captura as últimas 50 linhas do terminal para enviar à IA
-          ERROR_LOG=$(git log -1 --pretty=format:"Commit: %s" && echo "" && echo "Logs recentes:" && timeout 10s npm run test-error 2>&1 | tail -n 50)
+          ERROR_LOG=$(git log -1 --pretty=format:"Commit: %s" && echo "" && echo "Logs recentes:" && timeout 10s npm run lint 2>&1 | tail -n 50)
           
           echo "=== 2. FORMATANDO O PROMPT ==="
           # Protege o texto para não quebrar o JSON da requisição (lida com múltiplas linhas)
