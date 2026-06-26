@@ -1,0 +1,33 @@
+name: Quality
+
+on:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install
+
+      # PASSO 1
+      - name: Verificar complexidade
+        run: npx eslint src
+
+      # PASSO 2
+      - name: Executar Codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt: |
+            Analise este Pull Request.
+
+            Caso exista alguma função com complexidade
+            maior que 3, explique o problema e proponha
+            uma refatoração.
