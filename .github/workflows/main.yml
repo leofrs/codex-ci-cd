@@ -34,7 +34,7 @@ jobs:
           npm run lint > lint.log 2>&1
           cat lint.log
 
-            - name: Enviar Erro para o Agente de IA
+      - name: Enviar Erro para o Agente de IA
         if: steps.run_tests.outcome == 'failure'
         env:
           AI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -110,7 +110,6 @@ jobs:
 
           if [ "$GH_EVENT_NAME" = "pull_request" ]; then
             echo "Detetado Pull Request. Publicando comentário..."
-
             gh pr comment "$GH_PR_NUMBER" --body-file ai-analysis.md
           else
             echo "Push direto detetado. Ignorando comentário no PR."
